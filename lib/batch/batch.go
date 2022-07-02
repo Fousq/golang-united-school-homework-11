@@ -1,6 +1,7 @@
 package batch
 
 import (
+	"sync"
 	"time"
 )
 
@@ -14,5 +15,31 @@ func getOne(id int64) user {
 }
 
 func getBatch(n int64, pool int64) (res []user) {
-	return nil
+	userCh := make(chan user, n)
+	defer close(userCh)
+
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(int(pool))
+
+	partitionCap := int64(n / pool)
+	var partitionStartIndex int64 = 0
+	var i int64
+
+	for i = 0; i < pool; i++ {
+		go func(start int64, end int64) {
+			for i := start; i < end; i++ {
+				userCh <- getOne(i)
+			}
+			waitGroup.Done()
+		}(partitionStartIndex, partitionStartIndex+partitionCap)
+		partitionStartIndex += partitionCap
+	}
+
+	waitGroup.Wait()
+
+	var users []user
+	for i = 0; i < n; i++ {
+		users = append(users, <-userCh)
+	}
+	return users
 }
